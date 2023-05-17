@@ -6,11 +6,15 @@ use cosmwasm_std::{
 };
 use oraiswap::asset::AssetInfo;
 use oraiswap::response::MsgInstantiateContractResponse;
+use protobuf::well_known_types::any::Any;
+use protobuf::{Message, MessageField, SpecialFields};
+use schemars::_serde_json::to_string_pretty;
 // use cw2::set_contract_version;
 
 use crate::error::ContractError;
 use crate::helpers::FactoryContract;
 use crate::msg::{ExecuteMsg, InstantiateMsg, ListTokenMsg, QueryMsg};
+use crate::proposal::{MsgSubmitProposal, TextProposal};
 use crate::state::{
     config_read, config_save, cw20_token_reply_args, cw20_token_reply_args_read,
     listing_token_reply_args, listing_token_reply_args_read, Config, ListingTokenReplyArgs,
@@ -69,12 +73,61 @@ pub fn reply(deps: DepsMut, _env: Env, reply: Reply) -> Result<Response, Contrac
         },
         CREATE_PAIR_REPLY_ID => match reply.result {
             SubMsgResult::Ok(msg) => {
+                let wasm_event = msg.events.into_iter().find(|event| event.ty.eq("wasm"));
+                if wasm_event.is_none() {
+                    return Err(ContractError::Std(StdError::generic_err(
+                        "Cannot find wasm event",
+                    )));
+                }
+                let wasm_event = wasm_event.unwrap();
+                let lp_address = wasm_event
+                    .attributes
+                    .into_iter()
+                    .find(|attr| attr.key.eq("liquidity_token_address"));
+                if lp_address.is_none() {
+                    return Err(ContractError::Std(StdError::generic_err(
+                        "Cannot LP address event attribute",
+                    )));
+                }
+                let lp_address = lp_address.unwrap().value;
                 let reply_args = listing_token_reply_args_read(deps.storage)?;
                 let cw20_address = cw20_token_reply_args_read(deps.storage)?;
                 // now that we have enough information, we create the proposal
-                // TODO: Need to create a stargate CosmosMsg because CosmWasm does not support submitting a text proposal through smart contracts
-                // let cosmos_msg = CosmosMsg::Stargate { type_url: "/cosmos.gov.v1beta1.MsgSubmitProposal".to_string(), value: () }
-                Ok(Response::new())
+                let text_proposal = TextProposal {
+                    title: format!(
+                        "OraiDEX frontier - Listing new LP mining pool of token {}",
+                        cw20_address
+                    ),
+                    description: format!("Create a new liquidity mining pool for CW20 token: {} with LP Address: {}. Reward Assets per second for the liquidity mining pool: {}", cw20_address, lp_address, to_string_pretty(&reply_args.liquidity_pool_reward_assets).map_err(|err| StdError::generic_err(err.to_string()))?),
+                    special_fields: SpecialFields::default(),
+                };
+                let msg_submit_proposal = MsgSubmitProposal {
+                    content: MessageField::from(
+                        Any {
+                            type_url: "/cosmos.gov.v1beta1.TextProposal".to_string(),
+                            value: text_proposal
+                                .write_to_bytes()
+                                .map_err(|err| StdError::generic_err(err.to_string()))?,
+                            special_fields: SpecialFields::default(),
+                        }
+                        .unpack()
+                        .map_err(|err| StdError::generic_err(err.to_string()))?,
+                    ),
+                    initial_deposit: vec![],
+                    proposer: reply_args.proposer,
+                    special_fields: SpecialFields::default(),
+                };
+                let cosmos_msg: CosmosMsg = CosmosMsg::Stargate {
+                    type_url: "/cosmos.gov.v1beta1.MsgSubmitProposal".to_string(),
+                    value: to_binary(
+                        &msg_submit_proposal
+                            .write_to_bytes()
+                            .map_err(|err| StdError::generic_err(err.to_string()))?,
+                    )?,
+                };
+                Ok(Response::new()
+                    .add_attributes(vec![("action", "create_new_token_listing_proposal")])
+                    .add_submessage(SubMsg::reply_on_error(cosmos_msg, CREATE_PROPOSAL_REPLY_ID)))
             }
             SubMsgResult::Err(err) => Err(ContractError::Std(StdError::generic_err(err))),
         },
@@ -118,7 +171,7 @@ pub fn execute(
 
 pub fn list_token(
     deps: DepsMut,
-    _info: MessageInfo,
+    info: MessageInfo,
     msg: ListTokenMsg,
 ) -> Result<Response, ContractError> {
     let config = config_read(deps.storage)?;
@@ -126,6 +179,7 @@ pub fn list_token(
     listing_token_reply_args(
         deps.storage,
         &ListingTokenReplyArgs {
+            proposer: info.sender.to_string(),
             liquidity_pool_reward_assets: msg.liquidity_pool_reward_assets,
         },
     )?;

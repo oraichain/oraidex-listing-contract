@@ -50,6 +50,7 @@ thiserror = { version = "1.0.31" }
 oraiswap = "1.0.0"
 cw20-base = { version = "1.0.1" }
 cw20 = { version = "1.0.1" }
+protobuf = { version = "3.2.0", features = ["with-bytes"] }
 
 [dev-dependencies]
 cw-multi-test = "0.16.2"

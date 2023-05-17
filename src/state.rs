@@ -48,6 +48,7 @@ pub fn config_read(storage: &dyn Storage) -> StdResult<Config> {
 
 #[cw_serde]
 pub struct ListingTokenReplyArgs {
+    pub proposer: String,
     pub liquidity_pool_reward_assets: Vec<Asset>,
 }
 

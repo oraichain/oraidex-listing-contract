@@ -523,6 +523,7 @@ dependencies = [
  "cw20",
  "cw20-base",
  "oraiswap",
+ "protobuf",
  "schemars",
  "serde",
  "thiserror",
