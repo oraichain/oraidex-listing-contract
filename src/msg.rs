@@ -1,4 +1,3 @@
-use crate::state::Config;
 use cosmwasm_schema::{cw_serde, QueryResponses};
 use cw20::MinterResponse;
 use cw20_base::msg::InstantiateMarketingInfo;
@@ -27,7 +26,7 @@ pub struct ListTokenMsg {
 #[cw_serde]
 #[derive(QueryResponses)]
 pub enum QueryMsg {
-    #[returns(Config)]
+    #[returns(crate::state::Config)]
     Config {},
 }
 

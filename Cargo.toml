@@ -1,4 +1,6 @@
 [package]
+
+resolver = "2"
 name = "oraidex-listing-contract"
 version = "0.1.0"
 authors = ["ducphamle2 <ducphamle212@gmail.com>"]
