@@ -6,8 +6,7 @@ use cosmwasm_std::{
 };
 use oraiswap::asset::AssetInfo;
 use oraiswap::response::MsgInstantiateContractResponse;
-use protobuf::well_known_types::any::Any;
-use protobuf::{Message, MessageField, SpecialFields};
+use protobuf::{Message, SpecialFields};
 use schemars::_serde_json::to_string_pretty;
 // use cw2::set_contract_version;
 
@@ -69,7 +68,10 @@ pub fn reply(deps: DepsMut, _env: Env, reply: Reply) -> Result<Response, Contrac
                         ("reply_cw20_address", &cw20_address.to_string()),
                     ]))
             }
-            SubMsgResult::Err(err) => Err(ContractError::Std(StdError::generic_err(err))),
+            SubMsgResult::Err(err) => Err(ContractError::Std(StdError::generic_err(format!(
+                "error in instantiate submessage: {}",
+                err
+            )))),
         },
         CREATE_PAIR_REPLY_ID => match reply.result {
             SubMsgResult::Ok(msg) => {
@@ -106,23 +108,15 @@ pub fn reply(deps: DepsMut, _env: Env, reply: Reply) -> Result<Response, Contrac
                         cw20_address
                     ),
                     description: format!("Create a new liquidity mining pool for CW20 token: {} with LP Address: {}. Reward Assets per second for the liquidity mining pool: {}", cw20_address, lp_address, to_string_pretty(&reply_args.liquidity_pool_reward_assets).map_err(|err| StdError::generic_err(err.to_string()))?),
-                    special_fields: SpecialFields::default(),
+                    special_fields: SpecialFields::new(),
                 };
                 let msg_submit_proposal = MsgSubmitProposal {
-                    content: MessageField::from(
-                        Any {
-                            type_url: "/cosmos.gov.v1beta1.TextProposal".to_string(),
-                            value: text_proposal
-                                .write_to_bytes()
-                                .map_err(|err| StdError::generic_err(err.to_string()))?,
-                            special_fields: SpecialFields::default(),
-                        }
-                        .unpack()
+                    content: text_proposal
+                        .write_to_bytes()
                         .map_err(|err| StdError::generic_err(err.to_string()))?,
-                    ),
                     initial_deposit: vec![],
                     proposer: reply_args.proposer,
-                    special_fields: SpecialFields::default(),
+                    special_fields: SpecialFields::new(),
                 };
                 let cosmos_msg: CosmosMsg = CosmosMsg::Stargate {
                     type_url: "/cosmos.gov.v1beta1.MsgSubmitProposal".to_string(),
@@ -136,11 +130,17 @@ pub fn reply(deps: DepsMut, _env: Env, reply: Reply) -> Result<Response, Contrac
                     .add_attributes(vec![("action", "create_new_token_listing_proposal")])
                     .add_submessage(SubMsg::reply_on_error(cosmos_msg, CREATE_PROPOSAL_REPLY_ID)))
             }
-            SubMsgResult::Err(err) => Err(ContractError::Std(StdError::generic_err(err))),
+            SubMsgResult::Err(err) => Err(ContractError::Std(StdError::generic_err(format!(
+                "error in CREATE_PAIR_REPLY_ID: {}",
+                err
+            )))),
         },
         CREATE_PROPOSAL_REPLY_ID => match reply.result {
             SubMsgResult::Ok(_) => Ok(Response::new()),
-            SubMsgResult::Err(err) => Err(ContractError::Std(StdError::generic_err(err))),
+            SubMsgResult::Err(err) => Err(ContractError::Std(StdError::generic_err(format!(
+                "error in CREATE_PROPOSAL_REPLY_ID: {}",
+                err
+            )))),
         },
         _ => Err(ContractError::UnknownReplyId { id: reply.id }),
     }
@@ -190,26 +190,25 @@ pub fn list_token(
             liquidity_pool_reward_assets: msg.liquidity_pool_reward_assets,
         },
     )?;
+    let instantiate_msg: CosmosMsg = WasmMsg::Instantiate {
+        code_id: config.cw20_code_id,
+        funds: vec![],
+        admin: None,
+        label: msg
+            .label
+            .unwrap_or(format!("Production Cw20 {} token", msg.symbol.clone())),
+        msg: to_binary(&TokenInstantiateMsg {
+            name: msg.symbol.clone(),
+            symbol: msg.symbol.clone(),
+            decimals: 6,
+            initial_balances: vec![],
+            mint: msg.mint,
+            marketing: msg.marketing,
+        })?,
+    }
+    .into();
     Ok(Response::new()
-        .add_submessage(SubMsg::reply_always(
-            WasmMsg::Instantiate {
-                code_id: config.cw20_code_id,
-                funds: vec![],
-                admin: None,
-                label: msg
-                    .label
-                    .unwrap_or(format!("Production Cw20 {} token", msg.symbol)),
-                msg: to_binary(&TokenInstantiateMsg {
-                    name: "oraiswap liquidity token".to_string(),
-                    symbol: "uLP".to_string(),
-                    decimals: 6,
-                    initial_balances: vec![],
-                    mint: msg.mint,
-                    marketing: msg.marketing,
-                })?,
-            },
-            INSTANTIATE_REPLY_ID,
-        ))
+        .add_submessage(SubMsg::reply_always(instantiate_msg, INSTANTIATE_REPLY_ID))
         .add_attributes(vec![
             ("action", "list_new_cw20_token"),
             ("symbol", &msg.symbol),
