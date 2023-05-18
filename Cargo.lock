@@ -524,7 +524,6 @@ dependencies = [
  "oraiswap",
  "protobuf",
  "schemars",
- "serde",
  "thiserror",
 ]
 
