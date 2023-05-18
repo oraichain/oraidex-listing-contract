@@ -1,4 +1,5 @@
 syntax = "proto3";
+import "google/protobuf/any.proto";
 
 // Coin defines a token with a denomination and an amount.
 //
@@ -13,7 +14,7 @@ message Coin {
 // proposal Content.
 message MsgSubmitProposal {
   // content is the proposal's content.
-  bytes content = 1;
+  google.protobuf.Any content = 1;
 
   // initial_deposit is the deposit value that must be paid at proposal submission.
   repeated Coin initial_deposit = 2;

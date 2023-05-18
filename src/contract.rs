@@ -6,7 +6,8 @@ use cosmwasm_std::{
 };
 use oraiswap::asset::AssetInfo;
 use oraiswap::response::MsgInstantiateContractResponse;
-use protobuf::{Message, SpecialFields};
+use protobuf::well_known_types::any::Any;
+use protobuf::{Message, MessageField, SpecialFields};
 use schemars::_serde_json::to_string_pretty;
 // use cw2::set_contract_version;
 
@@ -32,7 +33,7 @@ const CREATE_PAIR_REPLY_ID: u64 = 2;
 const CREATE_PROPOSAL_REPLY_ID: u64 = 3;
 
 #[cfg_attr(not(feature = "library"), entry_point)]
-pub fn reply(deps: DepsMut, _env: Env, reply: Reply) -> Result<Response, ContractError> {
+pub fn reply(deps: DepsMut, env: Env, reply: Reply) -> Result<Response, ContractError> {
     match reply.id {
         INSTANTIATE_REPLY_ID => match reply.result {
             SubMsgResult::Ok(response) => {
@@ -111,20 +112,24 @@ pub fn reply(deps: DepsMut, _env: Env, reply: Reply) -> Result<Response, Contrac
                     special_fields: SpecialFields::new(),
                 };
                 let msg_submit_proposal = MsgSubmitProposal {
-                    content: text_proposal
-                        .write_to_bytes()
-                        .map_err(|err| StdError::generic_err(err.to_string()))?,
+                    content: MessageField::some(Any {
+                        type_url: "/cosmos.gov.v1beta1.TextProposal".to_string(),
+                        value: text_proposal
+                            .write_to_bytes()
+                            .map_err(|err| StdError::generic_err(err.to_string()))?,
+                        special_fields: SpecialFields::new(),
+                    }),
                     initial_deposit: vec![],
-                    proposer: reply_args.proposer,
+                    proposer: env.contract.address.to_string(),
                     special_fields: SpecialFields::new(),
                 };
                 let cosmos_msg: CosmosMsg = CosmosMsg::Stargate {
                     type_url: "/cosmos.gov.v1beta1.MsgSubmitProposal".to_string(),
-                    value: to_binary(
-                        &msg_submit_proposal
+                    value: Binary::from(
+                        msg_submit_proposal
                             .write_to_bytes()
                             .map_err(|err| StdError::generic_err(err.to_string()))?,
-                    )?,
+                    ),
                 };
                 Ok(Response::new()
                     .add_attributes(vec![("action", "create_new_token_listing_proposal")])
