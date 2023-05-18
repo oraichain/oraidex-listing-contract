@@ -13,7 +13,7 @@ use schemars::_serde_json::to_string_pretty;
 
 use crate::error::ContractError;
 use crate::helpers::FactoryContract;
-use crate::msg::{ExecuteMsg, InstantiateMsg, ListTokenMsg, QueryMsg};
+use crate::msg::{ExecuteMsg, InstantiateMsg, ListTokenMsg, MigrateMsg, QueryMsg};
 use crate::proposal::{MsgSubmitProposal, TextProposal};
 use crate::state::{
     config_read, config_save, cw20_token_reply_args, cw20_token_reply_args_read,
@@ -73,23 +73,30 @@ pub fn reply(deps: DepsMut, _env: Env, reply: Reply) -> Result<Response, Contrac
         },
         CREATE_PAIR_REPLY_ID => match reply.result {
             SubMsgResult::Ok(msg) => {
-                let wasm_event = msg.events.into_iter().find(|event| event.ty.eq("wasm"));
+                let events_pretty_print = to_string_pretty(&msg.events).unwrap();
+                let wasm_event = msg.events.into_iter().find(|event| {
+                    event.ty.eq("wasm")
+                        && event
+                            .attributes
+                            .clone()
+                            .into_iter()
+                            .find(|attr| attr.key.eq("liquidity_token_addr"))
+                            .is_some()
+                });
                 if wasm_event.is_none() {
-                    return Err(ContractError::Std(StdError::generic_err(
-                        "Cannot find wasm event",
-                    )));
+                    return Err(ContractError::Std(StdError::generic_err(format!(
+                        "Cannot find wasm event having liquidity_token_addr attribute. List of events: {}",
+                        events_pretty_print
+                    ))));
                 }
                 let wasm_event = wasm_event.unwrap();
                 let lp_address = wasm_event
+                    .clone()
                     .attributes
                     .into_iter()
-                    .find(|attr| attr.key.eq("liquidity_token_address"));
-                if lp_address.is_none() {
-                    return Err(ContractError::Std(StdError::generic_err(
-                        "Cannot LP address event attribute",
-                    )));
-                }
-                let lp_address = lp_address.unwrap().value;
+                    .find(|attr| attr.key.eq("liquidity_token_addr"))
+                    .unwrap()
+                    .value; // we unwrap because we already filter on top
                 let reply_args = listing_token_reply_args_read(deps.storage)?;
                 let cw20_address = cw20_token_reply_args_read(deps.storage)?;
                 // now that we have enough information, we create the proposal
@@ -214,6 +221,12 @@ pub fn query(deps: Deps, _env: Env, msg: QueryMsg) -> StdResult<Binary> {
     match msg {
         QueryMsg::Config {} => to_binary(&config_read(deps.storage)?),
     }
+}
+
+#[cfg_attr(not(feature = "library"), entry_point)]
+pub fn migrate(_deps: DepsMut, _env: Env, _msg: MigrateMsg) -> StdResult<Response> {
+    // once we have "migrated", set the new version and return success
+    Ok(Response::default())
 }
 
 #[cfg(test)]

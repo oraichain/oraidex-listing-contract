@@ -518,7 +518,6 @@ dependencies = [
  "cosmwasm-schema",
  "cosmwasm-std",
  "cosmwasm-storage",
- "cw-multi-test",
  "cw2",
  "cw20",
  "cw20-base",
