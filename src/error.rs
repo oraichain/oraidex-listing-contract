@@ -6,6 +6,12 @@ pub enum ContractError {
     #[error("{0}")]
     Std(#[from] StdError),
 
+    #[error("{0}")]
+    ProtobufError(#[from] protobuf::Error),
+
+    #[error("{0}")]
+    JsonError(#[from] schemars::_serde_json::Error),
+
     #[error("Unauthorized")]
     Unauthorized {},
     // Add any other custom errors you like here.

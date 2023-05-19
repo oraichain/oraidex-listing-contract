@@ -38,13 +38,7 @@ pub fn reply(deps: DepsMut, env: Env, reply: Reply) -> Result<Response, Contract
         INSTANTIATE_REPLY_ID => match reply.result {
             SubMsgResult::Ok(response) => {
                 let data = response.data.unwrap();
-                let res =
-                    MsgInstantiateContractResponse::try_from(data.as_slice()).map_err(|_| {
-                        StdError::parse_err(
-                            "MsgInstantiateContractResponse",
-                            "failed to parse MsgInstantiateContractResponse data",
-                        )
-                    })?;
+                let res = MsgInstantiateContractResponse::try_from(data.as_slice())?;
                 let config = config_read(deps.storage)?;
 
                 let cw20_address = Addr::unchecked(res.address);
@@ -76,7 +70,7 @@ pub fn reply(deps: DepsMut, env: Env, reply: Reply) -> Result<Response, Contract
         },
         CREATE_PAIR_REPLY_ID => match reply.result {
             SubMsgResult::Ok(msg) => {
-                let events_pretty_print = to_string_pretty(&msg.events).unwrap();
+                let events_pretty_print = to_string_pretty(&msg.events)?;
                 let wasm_event = msg.events.into_iter().find(|event| {
                     event.ty.eq("wasm")
                         && event
@@ -86,13 +80,14 @@ pub fn reply(deps: DepsMut, env: Env, reply: Reply) -> Result<Response, Contract
                             .find(|attr| attr.key.eq("liquidity_token_addr"))
                             .is_some()
                 });
-                if wasm_event.is_none() {
-                    return Err(ContractError::Std(StdError::generic_err(format!(
+                let wasm_event = match wasm_event {
+                    None => return Err(ContractError::Std(StdError::generic_err(format!(
                         "Cannot find wasm event having liquidity_token_addr attribute. List of events: {}",
                         events_pretty_print
-                    ))));
-                }
-                let wasm_event = wasm_event.unwrap();
+                    )))),
+                    Some(event)=>event,
+                };
+
                 let lp_address = wasm_event
                     .clone()
                     .attributes
@@ -108,15 +103,13 @@ pub fn reply(deps: DepsMut, env: Env, reply: Reply) -> Result<Response, Contract
                         "OraiDEX frontier - Listing new LP mining pool of token {}",
                         cw20_address
                     ),
-                    description: format!("Create a new liquidity mining pool for CW20 token: {} with LP Address: {}. Reward Assets per second for the liquidity mining pool: {}", cw20_address, lp_address, to_string_pretty(&reply_args.liquidity_pool_reward_assets).map_err(|err| StdError::generic_err(err.to_string()))?),
+                    description: format!("Create a new liquidity mining pool for CW20 token: {} with LP Address: {}. Reward Assets per second for the liquidity mining pool: {}", cw20_address, lp_address, to_string_pretty(&reply_args.liquidity_pool_reward_assets)?),
                     special_fields: SpecialFields::new(),
                 };
                 let msg_submit_proposal = MsgSubmitProposal {
                     content: MessageField::some(Any {
                         type_url: "/cosmos.gov.v1beta1.TextProposal".to_string(),
-                        value: text_proposal
-                            .write_to_bytes()
-                            .map_err(|err| StdError::generic_err(err.to_string()))?,
+                        value: text_proposal.write_to_bytes()?,
                         special_fields: SpecialFields::new(),
                     }),
                     initial_deposit: vec![],
@@ -125,11 +118,7 @@ pub fn reply(deps: DepsMut, env: Env, reply: Reply) -> Result<Response, Contract
                 };
                 let cosmos_msg: CosmosMsg = CosmosMsg::Stargate {
                     type_url: "/cosmos.gov.v1beta1.MsgSubmitProposal".to_string(),
-                    value: Binary::from(
-                        msg_submit_proposal
-                            .write_to_bytes()
-                            .map_err(|err| StdError::generic_err(err.to_string()))?,
-                    ),
+                    value: Binary::from(msg_submit_proposal.write_to_bytes()?),
                 };
                 Ok(Response::new()
                     .add_attributes(vec![("action", "create_new_token_listing_proposal")])
