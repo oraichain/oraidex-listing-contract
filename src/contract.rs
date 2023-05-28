@@ -192,10 +192,10 @@ pub fn list_token(
             .label
             .unwrap_or(format!("Production Cw20 {} token", msg.symbol.clone())),
         msg: to_binary(&TokenInstantiateMsg {
-            name: msg.symbol.clone(),
+            name: msg.name.unwrap_or(format!("{} token", msg.symbol.clone())),
             symbol: msg.symbol.clone(),
             decimals: 6,
-            initial_balances: vec![],
+            initial_balances: msg.initial_balances.unwrap_or_default(),
             mint: msg.mint,
             marketing: msg.marketing,
         })?,

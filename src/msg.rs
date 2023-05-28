@@ -1,5 +1,5 @@
 use cosmwasm_schema::{cw_serde, QueryResponses};
-use cw20::MinterResponse;
+use cw20::{Cw20Coin, MinterResponse};
 use cw20_base::msg::InstantiateMarketingInfo;
 use oraiswap::asset::Asset;
 
@@ -17,6 +17,8 @@ pub enum ExecuteMsg {
 #[cw_serde]
 pub struct ListTokenMsg {
     pub symbol: String,
+    pub name: Option<String>,
+    pub initial_balances: Option<Vec<Cw20Coin>>,
     pub liquidity_pool_reward_assets: Vec<Asset>,
     pub label: Option<String>,
     pub mint: Option<MinterResponse>,
