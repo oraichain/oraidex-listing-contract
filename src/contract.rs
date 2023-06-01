@@ -103,7 +103,7 @@ pub fn reply(deps: DepsMut, env: Env, reply: Reply) -> Result<Response, Contract
                 .append_message(1, 
                     &Anybuf::new()
                         .append_string(1, "/cosmos.gov.v1beta1.TextProposal")
-                        .append_bytes(2,text_proposal.as_bytes())     
+                        .append_message(2,&text_proposal)     
                 )
                 .append_bytes(2, &[])
                 .append_string(3, env.contract.address.as_str());
