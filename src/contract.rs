@@ -2,19 +2,14 @@
 use cosmwasm_std::entry_point;
 use cosmwasm_std::{
     to_binary, Addr, Binary, CosmosMsg, Deps, DepsMut, Env, MessageInfo, Reply, Response, StdError,
-    StdResult, SubMsg, SubMsgResult, WasmMsg,
+    StdResult, SubMsg, SubMsgResult, WasmMsg, Event, SubMsgResponse, 
 };
 use oraiswap::asset::AssetInfo;
-use oraiswap::response::MsgInstantiateContractResponse;
-use protobuf::well_known_types::any::Any;
-use protobuf::{Message, MessageField, SpecialFields};
 use schemars::_serde_json::to_string_pretty;
-// use cw2::set_contract_version;
-
+use anybuf::Anybuf;
 use crate::error::ContractError;
 use crate::helpers::FactoryContract;
 use crate::msg::{ExecuteMsg, InstantiateMsg, ListTokenMsg, MigrateMsg, QueryMsg};
-use crate::proposal::{MsgSubmitProposal, TextProposal};
 use crate::state::{
     config_read, config_save, cw20_token_reply_args, cw20_token_reply_args_read,
     listing_token_reply_args, listing_token_reply_args_read, Config, ListingTokenReplyArgs,
@@ -32,17 +27,38 @@ const INSTANTIATE_REPLY_ID: u64 = 1;
 const CREATE_PAIR_REPLY_ID: u64 = 2;
 const CREATE_PROPOSAL_REPLY_ID: u64 = 3;
 
+pub fn read_response<'a>(key: &str, response: &'a SubMsgResponse) -> StdResult<&'a Event> {
+    response
+        .events
+        .iter()
+        .find(|&e| e.ty.eq(key))
+        .ok_or_else(|| StdError::generic_err("No event found"))
+}
+
+pub fn read_event<'a>(key: &str, event: &'a Event) -> StdResult<&'a str> {
+    event
+        .attributes
+        .iter()
+        .find_map(|attr| {
+            if attr.key.eq(key) {
+                Some(attr.value.as_str())
+            } else {
+                None
+            }
+        })
+        .ok_or_else(|| StdError::generic_err("No attribute found"))
+}
+
 #[cfg_attr(not(feature = "library"), entry_point)]
 pub fn reply(deps: DepsMut, env: Env, reply: Reply) -> Result<Response, ContractError> {
     match reply.id {
-        INSTANTIATE_REPLY_ID => match reply.result {
+        INSTANTIATE_REPLY_ID => match &reply.result {
             SubMsgResult::Ok(response) => {
-                let data = response.data.unwrap();
-                let res = MsgInstantiateContractResponse::try_from(data.as_slice())?;
-                let config = config_read(deps.storage)?;
-
-                let cw20_address = Addr::unchecked(res.address);
-                let listing_contract: FactoryContract = FactoryContract(config.factory_addr);
+                let wasm = read_response("wasm", response)?;
+                let cw20_address = Addr::unchecked(read_event("_contract_address", wasm)?);
+                
+                let config = config_read(deps.storage)?;                
+                let listing_contract = FactoryContract(config.factory_addr);
                 let create_pair_msg = listing_contract.call(FactoryExecuteMsg::CreatePair {
                     asset_infos: [
                         AssetInfo::NativeToken {
@@ -68,58 +84,35 @@ pub fn reply(deps: DepsMut, env: Env, reply: Reply) -> Result<Response, Contract
                 err
             )))),
         },
-        CREATE_PAIR_REPLY_ID => match reply.result {
-            SubMsgResult::Ok(msg) => {
-                let events_pretty_print = to_string_pretty(&msg.events)?;
-                let wasm_event = msg.events.into_iter().find(|event| {
-                    event.ty.eq("wasm")
-                        && event
-                            .attributes
-                            .clone()
-                            .into_iter()
-                            .find(|attr| attr.key.eq("liquidity_token_addr"))
-                            .is_some()
-                });
-                let wasm_event = match wasm_event {
-                    None => return Err(ContractError::Std(StdError::generic_err(format!(
-                        "Cannot find wasm event having liquidity_token_addr attribute. List of events: {}",
-                        events_pretty_print
-                    )))),
-                    Some(event)=>event,
-                };
-
-                let lp_address = wasm_event
-                    .clone()
-                    .attributes
-                    .into_iter()
-                    .find(|attr| attr.key.eq("liquidity_token_addr"))
-                    .unwrap()
-                    .value; // we unwrap because we already filter on top
+        CREATE_PAIR_REPLY_ID => match &reply.result {
+            SubMsgResult::Ok(response) => {
+                let wasm = read_response("wasm", response)?;              
+                let lp_address = read_event("liquidity_token_addr", wasm)?;                   
                 let reply_args = listing_token_reply_args_read(deps.storage)?;
                 let cw20_address = cw20_token_reply_args_read(deps.storage)?;
                 // now that we have enough information, we create the proposal
-                let text_proposal = TextProposal {
-                    title: format!(
+                let text_proposal = Anybuf::new() 
+                    .append_string(1, format!(
                         "OraiDEX frontier - Listing new LP mining pool of token {}",
                         cw20_address
-                    ),
-                    description: format!("Create a new liquidity mining pool for CW20 token: {} with LP Address: {}. Reward Assets per second for the liquidity mining pool: {}", cw20_address, lp_address, to_string_pretty(&reply_args.liquidity_pool_reward_assets)?),
-                    special_fields: SpecialFields::new(),
-                };
-                let msg_submit_proposal = MsgSubmitProposal {
-                    content: MessageField::some(Any {
-                        type_url: "/cosmos.gov.v1beta1.TextProposal".to_string(),
-                        value: text_proposal.write_to_bytes()?,
-                        special_fields: SpecialFields::new(),
-                    }),
-                    initial_deposit: vec![],
-                    proposer: env.contract.address.to_string(),
-                    special_fields: SpecialFields::new(),
-                };
-                let cosmos_msg: CosmosMsg = CosmosMsg::Stargate {
+                    ))
+                    .append_string(2, format!("Create a new liquidity mining pool for CW20 token: {} with LP Address: {}. Reward Assets per second for the liquidity mining pool: {}", cw20_address, lp_address, to_string_pretty(&reply_args.liquidity_pool_reward_assets)?));
+                              
+
+                let msg_submit_proposal = Anybuf::new()
+                .append_message(1, 
+                    &Anybuf::new()
+                        .append_string(1, "/cosmos.gov.v1beta1.TextProposal")
+                        .append_bytes(2,text_proposal.as_bytes())     
+                )
+                .append_bytes(2, &[])
+                .append_string(3, env.contract.address.as_str());
+
+                let cosmos_msg = CosmosMsg::Stargate {
                     type_url: "/cosmos.gov.v1beta1.MsgSubmitProposal".to_string(),
-                    value: Binary::from(msg_submit_proposal.write_to_bytes()?),
+                    value: msg_submit_proposal.as_bytes().into(),
                 };
+
                 Ok(Response::new()
                     .add_attributes(vec![("action", "create_new_token_listing_proposal")])
                     .add_submessage(SubMsg::reply_on_error(cosmos_msg, CREATE_PROPOSAL_REPLY_ID)))

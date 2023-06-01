@@ -44,4 +44,4 @@ thiserror = { version = "1.0.31" }
 oraiswap = "1.0.0"
 cw20-base = { version = "1.0.1", features = ["library"] }
 cw20 = { version = "1.0.1" }
-protobuf = { version = "3.2.0", features = ["with-bytes"] }
+anybuf = { version = "0.1.0" }
