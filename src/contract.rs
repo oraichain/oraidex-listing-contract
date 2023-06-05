@@ -67,8 +67,6 @@ pub fn reply(deps: DepsMut, env: Env, reply: Reply) -> StdResult<Response> {
                     .splitn(2, '-')
                     .last()
                     .ok_or_else(|| StdError::generic_err("No attribute found"))?;
-                deps.api
-                    .debug(&format!("{}", response.data.as_ref().unwrap().to_base64()));
 
                 // now that we have enough information, we create the proposal
                 let text_proposal = Anybuf::new() .append_string(1, format!(
