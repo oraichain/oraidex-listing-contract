@@ -1,6 +1,5 @@
 use cosmwasm_schema::cw_serde;
 use cosmwasm_std::{from_slice, to_vec, Addr, StdError, StdResult, Storage};
-use oraiswap::asset::Asset;
 
 #[cw_serde]
 pub struct Config {
@@ -48,37 +47,4 @@ pub fn config_read(storage: &dyn Storage) -> StdResult<Config> {
     }
 }
 
-#[cw_serde]
-pub struct ListingTokenReplyArgs {
-    pub proposer: String,
-    pub liquidity_pool_reward_assets: Vec<Asset>,
-}
-
-pub fn listing_token_reply_args(
-    storage: &mut dyn Storage,
-    reply_args: &ListingTokenReplyArgs,
-) -> StdResult<()> {
-    Ok(storage.set(KEY_LISTING_TOKEN_REPLY_ARGS, &to_vec(reply_args)?))
-}
-
-pub fn listing_token_reply_args_read(storage: &dyn Storage) -> StdResult<ListingTokenReplyArgs> {
-    match storage.get(KEY_LISTING_TOKEN_REPLY_ARGS) {
-        Some(data) => from_slice(&data),
-        None => Err(StdError::generic_err("Listing token not found")),
-    }
-}
-
-pub fn cw20_token_reply_args(storage: &mut dyn Storage, cw20_address: &Addr) -> StdResult<()> {
-    Ok(storage.set(KEY_CW20_TOKEN_REPLY_ARGS, &to_vec(cw20_address)?))
-}
-
-pub fn cw20_token_reply_args_read(storage: &dyn Storage) -> StdResult<Addr> {
-    match storage.get(KEY_CW20_TOKEN_REPLY_ARGS) {
-        Some(data) => from_slice(&data),
-        None => Err(StdError::generic_err("Cw20 token not found")),
-    }
-}
-
 pub static KEY_CONFIG: &[u8] = b"config";
-pub static KEY_LISTING_TOKEN_REPLY_ARGS: &[u8] = b"listing_token_reply_args";
-pub static KEY_CW20_TOKEN_REPLY_ARGS: &[u8] = b"cw20_token_reply_args";
