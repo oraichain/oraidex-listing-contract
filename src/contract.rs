@@ -106,7 +106,7 @@ pub fn reply(deps: DepsMut, env: Env, reply: Reply) -> Result<Response, Contract
                         .append_message(2,&text_proposal)     
                 )
                 .append_bytes(2, &[])
-                .append_string(3, env.contract.address.as_str());
+                .append_bytes(3, env.contract.address.as_bytes());
 
                 let cosmos_msg = CosmosMsg::Stargate {
                     type_url: "/cosmos.gov.v1beta1.MsgSubmitProposal".to_string(),
