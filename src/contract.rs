@@ -1,16 +1,16 @@
+use crate::error::ContractError;
+use crate::helpers::FactoryContract;
+use crate::msg::{ExecuteMsg, InstantiateMsg, ListTokenMsg, MigrateMsg, QueryMsg};
+use crate::state::{config_read, config_save, Config};
+use anybuf::Anybuf;
 #[cfg(not(feature = "library"))]
 use cosmwasm_std::entry_point;
 use cosmwasm_std::{
     to_binary, Addr, Binary, CosmosMsg, Deps, DepsMut, Env, MessageInfo, Reply, Response, StdError,
-    StdResult, SubMsg, SubMsgResult, WasmMsg,  SubMsgResponse, 
+    StdResult, SubMsg, SubMsgResponse, SubMsgResult, WasmMsg,
 };
-use oraiswap::asset::AssetInfo;
-use anybuf::Anybuf;
-use crate::error::ContractError;
-use crate::helpers::FactoryContract;
-use crate::msg::{ExecuteMsg, InstantiateMsg, ListTokenMsg, MigrateMsg, QueryMsg};
-use crate::state::{config_read, config_save,Config};
 use cw20_base::msg::InstantiateMsg as TokenInstantiateMsg;
+use oraiswap::asset::AssetInfo;
 use oraiswap::factory::ExecuteMsg as FactoryExecuteMsg;
 
 /*
@@ -23,34 +23,29 @@ const INSTANTIATE_REPLY_ID: u64 = 1;
 const CREATE_PAIR_REPLY_ID: u64 = 2;
 const CREATE_PROPOSAL_REPLY_ID: u64 = 3;
 
-
 pub fn read_attr<'a>(key: &str, response: &'a SubMsgResponse) -> StdResult<&'a str> {
     for event in &response.events {
-        if let Some(attr) = event
-        .attributes
-        .iter()
-        .find_map(|attr| {
+        if let Some(attr) = event.attributes.iter().find_map(|attr| {
             if attr.key.eq(key) {
                 Some(attr.value.as_str())
             } else {
                 None
             }
-        }){
+        }) {
             return Ok(attr);
         }
     }
 
     Err(StdError::generic_err("No attribute found"))
-        
 }
 
 #[cfg_attr(not(feature = "library"), entry_point)]
 pub fn reply(deps: DepsMut, env: Env, reply: Reply) -> StdResult<Response> {
     match &reply.result {
         SubMsgResult::Ok(response) => match reply.id {
-            INSTANTIATE_REPLY_ID => {                                            
-                let cw20_address = Addr::unchecked(read_attr("_contract_address", response)?);                
-                let config = config_read(deps.storage)?;                
+            INSTANTIATE_REPLY_ID => {
+                let cw20_address = Addr::unchecked(read_attr("_contract_address", response)?);
+                let config = config_read(deps.storage)?;
                 let listing_contract = FactoryContract(config.factory_addr);
                 let create_pair_msg = listing_contract.call(FactoryExecuteMsg::CreatePair {
                     asset_infos: [
@@ -61,55 +56,55 @@ pub fn reply(deps: DepsMut, env: Env, reply: Reply) -> StdResult<Response> {
                             contract_addr: cw20_address.clone(),
                         },
                     ],
-                })?;                
+                })?;
 
                 Ok(Response::new()
-                    .add_submessage(SubMsg::reply_always(create_pair_msg, CREATE_PAIR_REPLY_ID))                    
-                )
-            },
-            CREATE_PAIR_REPLY_ID =>  {
-                                
-                    let lp_address = read_attr("liquidity_token_addr", response)?;                   
-                    let cw20_address = read_attr("pair",response)?.splitn(2, '-').last().ok_or_else(||StdError::generic_err("No attribute found"))?;
-                    deps.api.debug(&format!("{}",response.data.as_ref().unwrap().to_base64()));
-                                        
-                    // now that we have enough information, we create the proposal
-                    let text_proposal = Anybuf::new() 
-                        .append_string(1, format!(
+                    .add_submessage(SubMsg::reply_always(create_pair_msg, CREATE_PAIR_REPLY_ID)))
+            }
+            CREATE_PAIR_REPLY_ID => {
+                let lp_address = read_attr("liquidity_token_addr", response)?;
+                let cw20_address = read_attr("pair", response)?
+                    .splitn(2, '-')
+                    .last()
+                    .ok_or_else(|| StdError::generic_err("No attribute found"))?;
+                deps.api
+                    .debug(&format!("{}", response.data.as_ref().unwrap().to_base64()));
+
+                // now that we have enough information, we create the proposal
+                let text_proposal = Anybuf::new() .append_string(1, format!(
                             "OraiDEX frontier - Listing new LP mining pool of token {}",
                             cw20_address
                         ))
                         .append_string(2, format!("Create a new liquidity mining pool for CW20 token: {} with LP Address: {}", cw20_address, lp_address,                     
                     ));
-                                
 
-                    let msg_submit_proposal = Anybuf::new()
-                    .append_message(1, 
+                let msg_submit_proposal = Anybuf::new()
+                    .append_message(
+                        1,
                         &Anybuf::new()
                             .append_string(1, "/cosmos.gov.v1beta1.TextProposal")
-                            .append_message(2,&text_proposal)     
+                            .append_message(2, &text_proposal),
                     )
                     .append_bytes(2, &[])
                     .append_bytes(3, env.contract.address.as_bytes());
 
-                    let cosmos_msg = CosmosMsg::Stargate {
-                        type_url: "/cosmos.gov.v1beta1.MsgSubmitProposal".to_string(),
-                        value: msg_submit_proposal.as_bytes().into(),
-                    };
+                let cosmos_msg = CosmosMsg::Stargate {
+                    type_url: "/cosmos.gov.v1beta1.MsgSubmitProposal".to_string(),
+                    value: msg_submit_proposal.as_bytes().into(),
+                };
 
-                    Ok(Response::new()
-                        .add_attributes(vec![("action", "create_new_token_listing_proposal")])
-                        .add_submessage(SubMsg::reply_on_error(cosmos_msg, CREATE_PROPOSAL_REPLY_ID)))
-            
-            },
-            CREATE_PROPOSAL_REPLY_ID=>Ok(Response::new()),
+                Ok(Response::new()
+                    .add_attributes(vec![("action", "create_new_token_listing_proposal")])
+                    .add_submessage(SubMsg::reply_on_error(cosmos_msg, CREATE_PROPOSAL_REPLY_ID)))
+            }
+            CREATE_PROPOSAL_REPLY_ID => Ok(Response::new()),
             _ => Err(StdError::generic_err(format!(
                 "reply (id {:?}) invalid",
                 reply.id
             ))),
-        }
+        },
         SubMsgResult::Err(err) => match reply.id {
-            INSTANTIATE_REPLY_ID=>Err(StdError::generic_err(format!(
+            INSTANTIATE_REPLY_ID => Err(StdError::generic_err(format!(
                 "error in instantiate submessage: {}",
                 err
             ))),
@@ -121,7 +116,7 @@ pub fn reply(deps: DepsMut, env: Env, reply: Reply) -> StdResult<Response> {
                 "reply (id {:?}) error {:?}",
                 reply.id, err
             ))),
-        }        
+        },
     }
 }
 
@@ -161,7 +156,7 @@ pub fn list_token(
     msg: ListTokenMsg,
 ) -> Result<Response, ContractError> {
     let config = config_read(deps.storage)?;
-   
+
     let instantiate_msg: CosmosMsg = WasmMsg::Instantiate {
         code_id: config.cw20_code_id,
         funds: vec![],
@@ -179,12 +174,12 @@ pub fn list_token(
         })?,
     }
     .into();
-    Ok(Response::new()    
+    Ok(Response::new()
         .add_submessage(SubMsg::reply_always(instantiate_msg, INSTANTIATE_REPLY_ID))
         .add_attributes(vec![
             ("action", "list_new_cw20_token"),
             ("symbol", &msg.symbol),
-            ("proposer", info.sender.as_str()),            
+            ("proposer", info.sender.as_str()),
         ]))
 }
 
