@@ -59,7 +59,8 @@ pub fn reply(deps: DepsMut, env: Env, reply: Reply) -> StdResult<Response> {
                 })?;
 
                 Ok(Response::new()
-                    .add_submessage(SubMsg::reply_always(create_pair_msg, CREATE_PAIR_REPLY_ID)))
+                    .add_submessage(SubMsg::reply_always(create_pair_msg, CREATE_PAIR_REPLY_ID))
+                    .add_attribute("cw20_address", cw20_address))
             }
             CREATE_PAIR_REPLY_ID => {
                 let lp_address = read_attr("liquidity_token_addr", response)?;
