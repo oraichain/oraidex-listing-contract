@@ -1,5 +1,6 @@
 use cosmwasm_schema::cw_serde;
 use cosmwasm_std::{from_slice, to_vec, Addr, StdError, StdResult, Storage};
+use oraiswap::asset::AssetInfo;
 
 #[cw_serde]
 pub struct Config {
@@ -11,6 +12,17 @@ pub struct Config {
 
 pub fn config_save(storage: &mut dyn Storage, config: &Config) -> StdResult<()> {
     Ok(storage.set(KEY_CONFIG, &to_vec(config)?))
+}
+
+pub fn pair_asset_info_save(storage: &mut dyn Storage, asset_info: &AssetInfo) -> StdResult<()> {
+    Ok(storage.set(KEY_PAIR_ASSET_INFO, &to_vec(asset_info)?))
+}
+
+pub fn pair_asset_info_read(storage: &dyn Storage) -> StdResult<AssetInfo> {
+    match storage.get(KEY_PAIR_ASSET_INFO) {
+        Some(data) => from_slice(&data),
+        None => Err(StdError::generic_err("pair asset info not found")),
+    }
 }
 
 pub fn config_update(
@@ -48,3 +60,4 @@ pub fn config_read(storage: &dyn Storage) -> StdResult<Config> {
 }
 
 pub static KEY_CONFIG: &[u8] = b"config";
+pub static KEY_PAIR_ASSET_INFO: &[u8] = b"asset_info";

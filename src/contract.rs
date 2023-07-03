@@ -1,7 +1,7 @@
 use crate::error::ContractError;
 use crate::helpers::FactoryContract;
 use crate::msg::{ExecuteMsg, InstantiateMsg, ListTokenMsg, MigrateMsg, QueryMsg};
-use crate::state::{config_read, config_save, Config};
+use crate::state::{config_read, config_save, pair_asset_info_read, pair_asset_info_save, Config};
 use anybuf::Anybuf;
 #[cfg(not(feature = "library"))]
 use cosmwasm_std::entry_point;
@@ -49,9 +49,7 @@ pub fn reply(deps: DepsMut, env: Env, reply: Reply) -> StdResult<Response> {
                 let listing_contract = FactoryContract(config.factory_addr);
                 let create_pair_msg = listing_contract.call(FactoryExecuteMsg::CreatePair {
                     asset_infos: [
-                        AssetInfo::NativeToken {
-                            denom: "orai".to_string(),
-                        },
+                        pair_asset_info_read(deps.storage)?,
                         AssetInfo::Token {
                             contract_addr: cw20_address.clone(),
                         },
@@ -173,6 +171,7 @@ pub fn list_token(
         })?,
     }
     .into();
+    pair_asset_info_save(deps.storage, &msg.pair_asset_info)?;
     Ok(Response::new()
         .add_submessage(SubMsg::reply_always(instantiate_msg, INSTANTIATE_REPLY_ID))
         .add_attributes(vec![

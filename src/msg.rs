@@ -1,7 +1,7 @@
 use cosmwasm_schema::{cw_serde, QueryResponses};
 use cw20::{Cw20Coin, MinterResponse};
 use cw20_base::msg::InstantiateMarketingInfo;
-use oraiswap::asset::Asset;
+use oraiswap::asset::{Asset, AssetInfo};
 
 #[cw_serde]
 pub struct InstantiateMsg {
@@ -23,6 +23,7 @@ pub struct ListTokenMsg {
     pub label: Option<String>,
     pub mint: Option<MinterResponse>,
     pub marketing: Option<InstantiateMarketingInfo>,
+    pub pair_asset_info: AssetInfo,
 }
 
 #[cw_serde]
