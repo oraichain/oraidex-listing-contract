@@ -57,42 +57,11 @@ pub fn reply(deps: DepsMut, env: Env, reply: Reply) -> StdResult<Response> {
                 })?;
 
                 Ok(Response::new()
-                    .add_submessage(SubMsg::reply_always(create_pair_msg, CREATE_PAIR_REPLY_ID))
+                    .add_submessage(SubMsg::reply_on_error(
+                        create_pair_msg,
+                        CREATE_PAIR_REPLY_ID,
+                    ))
                     .add_attribute("cw20_address", cw20_address))
-            }
-            CREATE_PAIR_REPLY_ID => {
-                let lp_address = read_attr("liquidity_token_addr", response)?;
-                let cw20_address = read_attr("pair", response)?
-                    .splitn(2, '-')
-                    .last()
-                    .ok_or_else(|| StdError::generic_err("No attribute found"))?;
-
-                // now that we have enough information, we create the proposal
-                let text_proposal = Anybuf::new() .append_string(1, format!(
-                            "OraiDEX frontier - Listing new LP mining pool of token {}",
-                            cw20_address
-                        ))
-                        .append_string(2, format!("Create a new liquidity mining pool for CW20 token: {} with LP Address: {}", cw20_address, lp_address,                     
-                    ));
-
-                let msg_submit_proposal = Anybuf::new()
-                    .append_message(
-                        1,
-                        &Anybuf::new()
-                            .append_string(1, "/cosmos.gov.v1beta1.TextProposal")
-                            .append_message(2, &text_proposal),
-                    )
-                    .append_bytes(2, &[])
-                    .append_bytes(3, env.contract.address.as_bytes());
-
-                let cosmos_msg = CosmosMsg::Stargate {
-                    type_url: "/cosmos.gov.v1beta1.MsgSubmitProposal".to_string(),
-                    value: msg_submit_proposal.as_bytes().into(),
-                };
-
-                Ok(Response::new()
-                    .add_attributes(vec![("action", "create_new_token_listing_proposal")])
-                    .add_submessage(SubMsg::reply_on_error(cosmos_msg, CREATE_PROPOSAL_REPLY_ID)))
             }
             CREATE_PROPOSAL_REPLY_ID => Ok(Response::new()),
             _ => Err(StdError::generic_err(format!(
