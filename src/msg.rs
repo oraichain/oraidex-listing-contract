@@ -16,7 +16,8 @@ pub enum ExecuteMsg {
 
 #[cw_serde]
 pub struct ListTokenMsg {
-    pub symbol: String,
+    pub targeted_asset_info: Option<AssetInfo>,
+    pub symbol: Option<String>,
     pub name: Option<String>,
     pub initial_balances: Option<Vec<Cw20Coin>>,
     pub liquidity_pool_reward_assets: Vec<Asset>,
