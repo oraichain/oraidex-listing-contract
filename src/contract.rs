@@ -2,7 +2,6 @@ use crate::error::ContractError;
 use crate::helpers::FactoryContract;
 use crate::msg::{ExecuteMsg, InstantiateMsg, ListTokenMsg, MigrateMsg, QueryMsg};
 use crate::state::{config_read, config_save, pair_asset_info_read, pair_asset_info_save, Config};
-use anybuf::Anybuf;
 #[cfg(not(feature = "library"))]
 use cosmwasm_std::entry_point;
 use cosmwasm_std::{
@@ -40,7 +39,7 @@ pub fn read_attr<'a>(key: &str, response: &'a SubMsgResponse) -> StdResult<&'a s
 }
 
 #[cfg_attr(not(feature = "library"), entry_point)]
-pub fn reply(deps: DepsMut, env: Env, reply: Reply) -> StdResult<Response> {
+pub fn reply(deps: DepsMut, _env: Env, reply: Reply) -> StdResult<Response> {
     match &reply.result {
         SubMsgResult::Ok(response) => match reply.id {
             INSTANTIATE_REPLY_ID => {
