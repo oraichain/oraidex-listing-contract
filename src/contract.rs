@@ -2,6 +2,7 @@ use crate::error::ContractError;
 use crate::helpers::FactoryContract;
 use crate::msg::{ExecuteMsg, InstantiateMsg, ListTokenMsg, MigrateMsg, QueryMsg};
 use crate::state::{config_read, config_save, pair_asset_info_read, pair_asset_info_save, Config};
+use anybuf::Anybuf;
 #[cfg(not(feature = "library"))]
 use cosmwasm_std::entry_point;
 use cosmwasm_std::{
@@ -39,7 +40,7 @@ pub fn read_attr<'a>(key: &str, response: &'a SubMsgResponse) -> StdResult<&'a s
 }
 
 #[cfg_attr(not(feature = "library"), entry_point)]
-pub fn reply(deps: DepsMut, _env: Env, reply: Reply) -> StdResult<Response> {
+pub fn reply(deps: DepsMut, env: Env, reply: Reply) -> StdResult<Response> {
     match &reply.result {
         SubMsgResult::Ok(response) => match reply.id {
             INSTANTIATE_REPLY_ID => {
@@ -61,6 +62,38 @@ pub fn reply(deps: DepsMut, _env: Env, reply: Reply) -> StdResult<Response> {
                         CREATE_PAIR_REPLY_ID,
                     ))
                     .add_attribute("cw20_address", cw20_address))
+            }
+            CREATE_PAIR_REPLY_ID => {
+                let token = read_attr("cw20_address", response)
+                    .unwrap_or(read_attr("asset_info", response).unwrap_or(""));
+                let lp_address = read_attr("liquidity_token_address", response)?;
+                let pair_address = read_attr("pair_contract_address", response)?;
+                // now that we have enough information, we create the proposal
+                let text_proposal = Anybuf::new() .append_string(1, format!(
+                            "OraiDEX frontier - Listing new LP mining pool of token {}",
+                            token
+                        ))
+                        .append_string(2, format!("Create a new liquidity mining pool for token: {} with LP Address: {} and Pair Address: {}", token, lp_address, pair_address,                     
+                    ));
+
+                let msg_submit_proposal = Anybuf::new()
+                    .append_message(
+                        1,
+                        &Anybuf::new()
+                            .append_string(1, "/cosmos.gov.v1beta1.TextProposal")
+                            .append_message(2, &text_proposal),
+                    )
+                    .append_bytes(2, &[])
+                    .append_bytes(3, env.contract.address.as_bytes());
+
+                let cosmos_msg = CosmosMsg::Stargate {
+                    type_url: "/cosmos.gov.v1beta1.MsgSubmitProposal".to_string(),
+                    value: msg_submit_proposal.as_bytes().into(),
+                };
+
+                Ok(Response::new()
+                    .add_attributes(vec![("action", "create_new_token_listing_proposal")])
+                    .add_submessage(SubMsg::reply_on_error(cosmos_msg, CREATE_PROPOSAL_REPLY_ID)))
             }
             CREATE_PROPOSAL_REPLY_ID => Ok(Response::new()),
             _ => Err(StdError::generic_err(format!(
@@ -127,11 +160,17 @@ pub fn list_token(
 ) -> Result<Response, ContractError> {
     let config = config_read(deps.storage)?;
     if let Some(asset_info) = msg.targeted_asset_info {
-        let cosmos_msg = create_pair_msg(config.factory_addr, [asset_info, msg.pair_asset_info])?;
-        return Ok(Response::new().add_message(cosmos_msg).add_attributes(vec![
-            ("action", "list_new_token_pool"),
-            ("proposer", info.sender.as_str()),
-        ]));
+        let cosmos_msg = create_pair_msg(
+            config.factory_addr,
+            [asset_info.clone(), msg.pair_asset_info],
+        )?;
+        return Ok(Response::new()
+            .add_submessage(SubMsg::reply_always(cosmos_msg, CREATE_PAIR_REPLY_ID))
+            .add_attributes(vec![
+                ("action", "list_new_token_pool"),
+                ("proposer", info.sender.as_str()),
+                ("asset_info", &asset_info.to_string()),
+            ]));
     }
 
     if msg.symbol.is_none() {
