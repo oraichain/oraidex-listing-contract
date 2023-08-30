@@ -1,13 +1,17 @@
+#[cfg(not(feature = "library"))]
 use crate::error::ContractError;
 use crate::helpers::FactoryContract;
 use crate::msg::{ExecuteMsg, InstantiateMsg, ListTokenMsg, MigrateMsg, QueryMsg};
 use crate::state::{config_read, config_save, pair_asset_info_read, pair_asset_info_save, Config};
-use anybuf::Anybuf;
-#[cfg(not(feature = "library"))]
-use cosmwasm_std::entry_point;
+use cosmos_sdk_proto::{
+    cosmos::gov::v1beta1::{MsgSubmitProposal, TextProposal},
+    traits::Message,
+    Any,
+};
+
 use cosmwasm_std::{
-    to_binary, Addr, Binary, CosmosMsg, Deps, DepsMut, Env, MessageInfo, Reply, Response, StdError,
-    StdResult, SubMsg, SubMsgResponse, SubMsgResult, WasmMsg,
+    entry_point, to_binary, Addr, Binary, CosmosMsg, Deps, DepsMut, Env, MessageInfo, Reply,
+    Response, StdError, StdResult, SubMsg, SubMsgResponse, SubMsgResult, WasmMsg,
 };
 use cw20_base::msg::InstantiateMsg as TokenInstantiateMsg;
 use oraiswap::asset::AssetInfo;
@@ -67,27 +71,23 @@ pub fn reply(deps: DepsMut, env: Env, reply: Reply) -> StdResult<Response> {
                     .last()
                     .ok_or_else(|| StdError::generic_err("No attribute found"))?;
 
-                // now that we have enough information, we create the proposal
-                let text_proposal = Anybuf::new() .append_string(1, format!(
-                            "OraiDEX frontier - Listing new LP mining pool of token {}",
-                            cw20_address
-                        ))
-                        .append_string(2, format!("Create a new liquidity mining pool for CW20 token: {} with LP Address: {}", cw20_address, lp_address,                     
-                    ));
-
-                let msg_submit_proposal = Anybuf::new()
-                    .append_message(
-                        1,
-                        &Anybuf::new()
-                            .append_string(1, "/cosmos.gov.v1beta1.TextProposal")
-                            .append_message(2, &text_proposal),
-                    )
-                    .append_bytes(2, &[])
-                    .append_bytes(3, env.contract.address.as_bytes());
-
                 let cosmos_msg = CosmosMsg::Stargate {
                     type_url: "/cosmos.gov.v1beta1.MsgSubmitProposal".to_string(),
-                    value: msg_submit_proposal.as_bytes().into(),
+                    value: MsgSubmitProposal {
+                        content: Some(Any {
+                            type_url: "/cosmos.gov.v1beta1.TextProposal".to_string(),
+                            value:TextProposal {
+                                title:format!(
+                                    "OraiDEX frontier - Listing new LP mining pool of token {}",
+                                    cw20_address
+                                ),
+                                description:format!("Create a new liquidity mining pool for CW20 token: {} with LP Address: {}", cw20_address, lp_address,
+                            )
+                            }.encode_to_vec()
+                        }),
+                        initial_deposit: vec![],
+                        proposer: env.contract.address.to_string(),
+                    }.encode_to_vec().into(),
                 };
 
                 Ok(Response::new()
@@ -195,4 +195,68 @@ pub fn migrate(_deps: DepsMut, _env: Env, _msg: MigrateMsg) -> StdResult<Respons
 }
 
 #[cfg(test)]
-mod tests {}
+mod tests {
+    use anybuf::Anybuf;
+    use cosmos_sdk_proto::{
+        cosmos::gov::v1beta1::{MsgSubmitProposal, TextProposal},
+        traits::Message,
+        Any,
+    };
+    use cosmwasm_std::Binary;
+
+    #[test]
+    fn test_encode() {
+        let cw20_address = "orai123";
+
+        let value: Binary = MsgSubmitProposal {
+            content: Some(Any {
+                type_url: "/cosmos.gov.v1beta1.TextProposal".to_string(),
+                value: TextProposal {
+                    title: format!(
+                        "OraiDEX frontier - Listing new LP mining pool of token {}",
+                        cw20_address
+                    ),
+                    description: format!(
+                        "Create a new liquidity mining pool for CW20 token: {} with LP Address: {}",
+                        cw20_address, cw20_address,
+                    ),
+                }
+                .encode_to_vec(),
+            }),
+            initial_deposit: vec![],
+            proposer: cw20_address.to_string(),
+        }
+        .encode_to_vec()
+        .into();
+
+        // now that we have enough information, we create the proposal
+        let text_proposal = Anybuf::new()
+            .append_string(
+                1,
+                format!(
+                    "OraiDEX frontier - Listing new LP mining pool of token {}",
+                    cw20_address
+                ),
+            )
+            .append_string(
+                2,
+                format!(
+                    "Create a new liquidity mining pool for CW20 token: {} with LP Address: {}",
+                    cw20_address, cw20_address,
+                ),
+            );
+
+        let msg_submit_proposal = Anybuf::new()
+            .append_message(
+                1,
+                &Anybuf::new()
+                    .append_string(1, "/cosmos.gov.v1beta1.TextProposal")
+                    .append_message(2, &text_proposal),
+            )
+            .append_bytes(2, &[])
+            .append_bytes(3, cw20_address.as_bytes());
+        let value2: Binary = msg_submit_proposal.as_bytes().into();
+
+        assert_eq!(value.to_base64(), value2.to_base64());
+    }
+}
