@@ -173,7 +173,8 @@ pub fn list_token(
             [asset_info.clone(), msg.pair_asset_info],
         )?;
         return Ok(Response::new()
-            .add_submessage(SubMsg::reply_always(cosmos_msg, CREATE_PAIR_REPLY_ID))
+            // .add_submessage(SubMsg::reply_always(cosmos_msg, CREATE_PAIR_REPLY_ID))
+            .add_message(cosmos_msg)
             .add_attributes(vec![
                 ("action", "list_new_token_pool"),
                 ("proposer", info.sender.as_str()),
