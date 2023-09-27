@@ -50,18 +50,24 @@ pub fn reply(deps: DepsMut, env: Env, reply: Reply) -> StdResult<Response> {
             INSTANTIATE_REPLY_ID => {
                 let cw20_address = Addr::unchecked(read_attr("_contract_address", response)?);
                 let config = config_read(deps.storage)?;
-                let listing_contract = FactoryContract(config.factory_addr);
-                let create_pair_msg = listing_contract.call(FactoryExecuteMsg::CreatePair {
-                    asset_infos: [
+                let create_pair_msg = create_pair_msg(
+                    config.factory_addr,
+                    [
                         pair_asset_info_read(deps.storage)?,
                         AssetInfo::Token {
                             contract_addr: cw20_address.clone(),
                         },
                     ],
-                })?;
+                )?;
 
                 Ok(Response::new()
-                    .add_submessage(SubMsg::reply_always(create_pair_msg, CREATE_PAIR_REPLY_ID))
+                    .add_message(create_pair_msg)
+                    /*
+                    .add_submessage(SubMsg::reply_on_error(
+                        create_pair_msg,
+                        CREATE_PAIR_REPLY_ID,
+                    ))
+                     */
                     .add_attribute("cw20_address", cw20_address))
             }
             CREATE_PAIR_REPLY_ID => {
@@ -147,12 +153,40 @@ pub fn execute(
     }
 }
 
+pub fn create_pair_msg(factory_addr: Addr, asset_infos: [AssetInfo; 2]) -> StdResult<CosmosMsg> {
+    let listing_contract = FactoryContract(factory_addr.clone());
+    listing_contract.call(FactoryExecuteMsg::CreatePair {
+        asset_infos,
+        pair_admin: Some(factory_addr.into_string()),
+    })
+}
+
 pub fn list_token(
     deps: DepsMut,
     info: MessageInfo,
     msg: ListTokenMsg,
 ) -> Result<Response, ContractError> {
     let config = config_read(deps.storage)?;
+    if let Some(asset_info) = msg.targeted_asset_info {
+        let cosmos_msg = create_pair_msg(
+            config.factory_addr,
+            [asset_info.clone(), msg.pair_asset_info],
+        )?;
+        return Ok(Response::new()
+            .add_submessage(SubMsg::reply_always(cosmos_msg, CREATE_PAIR_REPLY_ID))
+            .add_attributes(vec![
+                ("action", "list_new_token_pool"),
+                ("proposer", info.sender.as_str()),
+                ("asset_info", &asset_info.to_string()),
+            ]));
+    }
+
+    if msg.symbol.is_none() {
+        return Err(ContractError::Std(StdError::generic_err(
+            "CW20 token symbol is empty. Cannot create a new CW20 token for pool listing",
+        )));
+    }
+    let symbol = msg.symbol.unwrap();
 
     let instantiate_msg: CosmosMsg = WasmMsg::Instantiate {
         code_id: config.cw20_code_id,
@@ -160,10 +194,10 @@ pub fn list_token(
         admin: None,
         label: msg
             .label
-            .unwrap_or(format!("Production Cw20 {} token", msg.symbol.clone())),
+            .unwrap_or(format!("Production Cw20 {} token", symbol.clone())),
         msg: to_binary(&TokenInstantiateMsg {
-            name: msg.name.unwrap_or(format!("{} token", msg.symbol.clone())),
-            symbol: msg.symbol.clone(),
+            name: msg.name.unwrap_or(format!("{} token", symbol.clone())),
+            symbol: symbol.clone(),
             decimals: 6,
             initial_balances: msg.initial_balances.unwrap_or_default(),
             mint: msg.mint,
@@ -175,8 +209,8 @@ pub fn list_token(
     Ok(Response::new()
         .add_submessage(SubMsg::reply_always(instantiate_msg, INSTANTIATE_REPLY_ID))
         .add_attributes(vec![
-            ("action", "list_new_cw20_token"),
-            ("symbol", &msg.symbol),
+            ("action", "list_new_token_pool_with_new_cw20_token"),
+            ("symbol", &symbol),
             ("proposer", info.sender.as_str()),
         ]))
 }
