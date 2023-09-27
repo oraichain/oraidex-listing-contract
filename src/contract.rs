@@ -154,8 +154,11 @@ pub fn execute(
 }
 
 pub fn create_pair_msg(factory_addr: Addr, asset_infos: [AssetInfo; 2]) -> StdResult<CosmosMsg> {
-    let listing_contract = FactoryContract(factory_addr);
-    listing_contract.call(FactoryExecuteMsg::CreatePair { asset_infos })
+    let listing_contract = FactoryContract(factory_addr.clone());
+    listing_contract.call(FactoryExecuteMsg::CreatePair {
+        asset_infos,
+        pair_admin: Some(factory_addr.into_string()),
+    })
 }
 
 pub fn list_token(
