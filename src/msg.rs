@@ -20,6 +20,7 @@ pub struct ListTokenMsg {
     pub symbol: Option<String>,
     pub name: Option<String>,
     pub initial_balances: Option<Vec<Cw20Coin>>,
+    pub cw20_admin: Option<String>,
     pub liquidity_pool_reward_assets: Vec<Asset>,
     pub label: Option<String>,
     pub mint: Option<MinterResponse>,

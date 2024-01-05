@@ -192,7 +192,7 @@ pub fn list_token(
     let instantiate_msg: CosmosMsg = WasmMsg::Instantiate {
         code_id: config.cw20_code_id,
         funds: vec![],
-        admin: None,
+        admin: msg.cw20_admin,
         label: msg
             .label
             .unwrap_or(format!("Production Cw20 {} token", symbol.clone())),
